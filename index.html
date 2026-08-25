@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Firebase Chat App</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    background: #1e1e2f;
+    color: #f0f0f0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+  }
+  h1 { color: #8ecae6; }
+  #setup, #chat-container {
+    width: 100%;
+    max-width: 500px;
+  }
+  input, button {
+    font-size: 16px;
+    padding: 10px;
+    margin: 5px 0;
+    border-radius: 6px;
+    border: none;
+    width: 100%;
+  }
+  button {
+    background: #8ecae6;
+    color: #1e1e2f;
+    font-weight: bold;
+    cursor: pointer;
+  }
+  button:hover { background: #219ebc; }
+  #messages {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    height: 350px;
+    overflow-y: auto;
+    background: #2b2b3d;
+    border-radius: 6px;
+    padding: 10px;
+  }
+  #messages li {
+    padding: 6px 10px;
+    margin-bottom: 6px;
+    background: #3a3a52;
+    border-radius: 6px;
+    word-wrap: break-word;
+  }
+  #messages li .name {
+    color: #ffb703;
+    font-weight: bold;
+    margin-right: 6px;
+  }
+  #messages li .time {
+    float: right;
+    font-size: 11px;
+    color: #aaa;
+  }
+  #send-row {
+    display: flex;
+    gap: 6px;
+  }
+  #send-row input { flex: 1; }
+  #send-row button { width: auto; padding: 10px 18px; }
+  #status { font-size: 13px; color: #aaa; margin-top: 4px; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+
+<h1>💬 Simple Chat</h1>
+
+<!-- SETUP SCREEN: just pick a username, Firebase config is hardcoded in the script below -->
+<div id="setup">
+  <input id="username" placeholder="Choose a display name">
+  <button id="connectBtn">Connect &amp; Join Chat</button>
+  <div id="status"></div>
+</div>
+
+<!-- CHAT SCREEN -->
+<div id="chat-container" class="hidden">
+  <ul id="messages"></ul>
+  <div id="send-row">
+    <input id="messageInput" placeholder="Type a message..." maxlength="500">
+    <button id="sendBtn">Send</button>
+  </div>
+  <div id="status"></div>
+</div>
+
+<!-- Firebase SDK (compat version, works everywhere including CodeHS iframe sandboxes) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+<script>
+/* =========================================================
+   PROFANITY FILTER
+   Simple word-list based filter. Add/remove words as needed.
+   Checks whole words (case-insensitive) and replaces them
+   with asterisks of the same length.
+   ========================================================= */
+const bannedWords = [
+  "damn", "hell", "crap", "shit", "fuck", "bitch", "ass",
+  "bastard", "dick", "piss", "slut", "whore", "cunt"
+  // add more words here if you want
+];
+
+function filterProfanity(text) {
+  let cleaned = text;
+  bannedWords.forEach(word => {
+    // \b = word boundary, 'gi' = global + case-insensitive
+    const regex = new RegExp("\\b" + word + "\\b", "gi");
+    cleaned = cleaned.replace(regex, match => "*".repeat(match.length));
+  });
+  return cleaned;
+}
+
+/* =========================================================
+   FIREBASE CONFIG
+   Replace the values below with YOUR project's config.
+   Get these from: Firebase Console -> Project Settings ->
+   General -> Your apps -> SDK setup and configuration.
+   ========================================================= */
+const firebaseConfig = {
+  apiKey: "AIzaSyDgjsQAUlOUjFSYGnlF3W4Hj5nbOfhlS3w",
+  authDomain: "a-simple-project-for-use.firebaseapp.com",
+  // IMPORTANT: databaseURL is NOT included in the config you get from
+  // Firebase Console -> Project Settings by default. You must add it
+  // yourself after enabling Realtime Database:
+  // Firebase Console -> Build -> Realtime Database -> Create Database.
+  // Once created, copy the URL shown at the top (looks like the line
+  // below) and paste it here.
+  databaseURL: "https://a-simple-project-for-use-default-rtdb.firebaseio.com",
+  projectId: "a-simple-project-for-use",
+  storageBucket: "a-simple-project-for-use.firebasestorage.app",
+  messagingSenderId: "163296782725",
+  appId: "1:163296782725:web:6aac7fe39b9668502e7cec",
+  measurementId: "G-WT5LS4SSWJ"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+/* =========================================================
+   APP STATE
+   ========================================================= */
+let username = "";
+
+const setupDiv = document.getElementById("setup");
+const chatDiv = document.getElementById("chat-container");
+const connectBtn = document.getElementById("connectBtn");
+const sendBtn = document.getElementById("sendBtn");
+const messageInput = document.getElementById("messageInput");
+const messagesList = document.getElementById("messages");
+const setupStatus = setupDiv.querySelector("#status");
+
+/* =========================================================
+   CONNECT TO FIREBASE
+   ========================================================= */
+connectBtn.addEventListener("click", () => {
+  username = document.getElementById("username").value.trim();
+
+  if (!username) {
+    setupStatus.textContent = "Please choose a display name.";
+    return;
+  }
+
+  setupDiv.classList.add("hidden");
+  chatDiv.classList.remove("hidden");
+  listenForMessages();
+});
+
+/* =========================================================
+   SEND MESSAGE
+   ========================================================= */
+function sendMessage() {
+  const raw = messageInput.value.trim();
+  if (!raw) return;
+
+  const clean = filterProfanity(raw);
+
+  db.ref("messages").push({
+    name: username,
+    text: clean,
+    time: Date.now()
+  });
+
+  messageInput.value = "";
+}
+
+sendBtn.addEventListener("click", sendMessage);
+messageInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") sendMessage();
+});
+
+/* =========================================================
+   LISTEN FOR MESSAGES (Realtime Database)
+   ========================================================= */
+function listenForMessages() {
+  const messagesRef = db.ref("messages").limitToLast(100);
+  messagesRef.on("child_added", (snapshot) => {
+    const msg = snapshot.val();
+    addMessageToUI(msg);
+  });
+}
+
+function addMessageToUI(msg) {
+  const li = document.createElement("li");
+  const timeStr = new Date(msg.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  li.innerHTML =
+    '<span class="name">' + escapeHTML(msg.name) + ':</span>' +
+    escapeHTML(msg.text) +
+    '<span class="time">' + timeStr + '</span>';
+  messagesList.appendChild(li);
+  messagesList.scrollTop = messagesList.scrollHeight;
+}
+
+// basic HTML escaping to prevent injected tags from rendering
+function escapeHTML(str) {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+</script>
+</body>
+</html>
